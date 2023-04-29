@@ -1,4 +1,4 @@
- cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 2.8.12)
  project(Pandanite)
 
  
@@ -49,4 +49,3 @@ if (UNIX)
         target_link_libraries(keygen ${CONAN_LIBS}  -lleveldb -lstdc++fs -lssl -lcrypto)
     endif()
 endif()
-
