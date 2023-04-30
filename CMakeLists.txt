@@ -2,11 +2,14 @@ cmake_minimum_required(VERSION 2.8.12)
  project(Pandanite)
 
  
+ cmake_minimum_required(VERSION 2.8.12)
+ project(Pandanite)
+ 
  if (WIN32)
- set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++latest")
+ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++latest -g")
  set(CONAN_DISABLE_CHECK_COMPILER TRUE)
 else()
- set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")    
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -g")
 endif()
 
 set (CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

@@ -12,7 +12,7 @@
 #include <cmath>
 #include <fstream>
 #include <algorithm>
-#include <mutex>
+#include <future>
 #include "../core/merkle_tree.hpp"
 #include "../core/logger.hpp"
 #include "../core/helpers.hpp"
@@ -30,38 +30,67 @@
 using namespace std;
 
 void chain_sync(BlockChain& blockchain) {
-    while(true) {
+    std::mutex sync_mutex;
+    while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10000));
         if (blockchain.shutdown) break;
         if (!blockchain.isSyncing && blockchain.hosts.getBlockCount() > blockchain.numBlocks) {
-            ExecutionStatus status = blockchain.startChainSync();
-            if (status != SUCCESS)
-            {
+            std::unique_lock<std::mutex> lock(sync_mutex, std::try_to_lock);
+            if (!lock.owns_lock()) {
+                continue;
+            }
+
+            std::vector<std::future<ExecutionStatus>> futures;
+            unsigned int num_threads = std::thread::hardware_concurrency();
+            std::atomic<uint64_t> current_block{blockchain.numBlocks + 1};
+            uint64_t target_block = blockchain.hosts.getBlockCount();
+
+            for (unsigned int i = 0; i < num_threads; ++i) {
+                futures.push_back(std::async(std::launch::async, [&]() -> ExecutionStatus {
+                    while (true) {
+                        uint64_t block_id = current_block.fetch_add(1);
+                        if (block_id > target_block) {
+                            return SUCCESS;
+                        }
+
+                        ExecutionStatus status = blockchain.startChainSync();
+                        if (status != SUCCESS) {
+                            return status;
+                        }
+                    }
+                }));
+            }
+
+            bool success = true;
+            for (auto& future : futures) {
+                ExecutionStatus status = future.get();
+                if (status != SUCCESS) {
+                    success = false;
+                    break;
+                }
+            }
+
+            if (!success) {
                 blockchain.retries++;
-                if (blockchain.retries > FORK_RESET_RETRIES)
-                {
+                if (blockchain.retries > FORK_RESET_RETRIES) {
                     Logger::logError(RED + "[FATAL]" + RESET, "Max Rollback Tries Reached.");
                     blockchain.resetChain();
                     blockchain.recomputeLedger();
-                }
-                else
-                {
+                } else {
                     Logger::logError(RED + "[ERROR]" + RESET, "Rollback retry #" + to_string(blockchain.retries));
-                    for (uint64_t i = 0; i < FORK_CHAIN_POP_COUNT*blockchain.retries; i++) {
+                    for (uint64_t i = 0; i < FORK_CHAIN_POP_COUNT * blockchain.retries; i++) {
                         if (blockchain.numBlocks == 1) break;
                         blockchain.popBlock();
                     }
                     blockchain.recomputeLedger();
                 }
-            }
-            else
-            {
+            } else {
                 Logger::logStatus("Chain Sync Status: SUCCESS Top Block: " + to_string(blockchain.numBlocks));
                 blockchain.retries = 0;
             }
-        }
-        else
-        {
+
+            lock.unlock();
+        } else {
             Logger::logStatus("Debug isSyncing: " + to_string(blockchain.isSyncing));
             Logger::logStatus("Debug hosts.getBlockCount: " + to_string(blockchain.hosts.getBlockCount()));
             Logger::logStatus("Debug numBlocks: " + to_string(blockchain.numBlocks));
