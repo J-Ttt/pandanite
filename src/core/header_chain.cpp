@@ -4,12 +4,16 @@
 #include "logger.hpp"
 #include <iostream>
 #include <thread>
+#include <mutex>
 using namespace std;
 
 #define MAX_HASH_RETENTION 1000
 
+std::mutex mtx;
+
 void chain_sync(HeaderChain& chain) {
     while(true) {
+        mtx.lock();
         if (!chain.triedBlockStoreCache && chain.blockStore) {
             uint64_t chainLength = chain.blockStore->getBlockCount();
             for(uint64_t i = 1; i <= chainLength; i++) {
@@ -22,10 +26,10 @@ void chain_sync(HeaderChain& chain) {
         } else {
             chain.load();
         }
+        mtx.unlock();
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
 }
-
 
 HeaderChain::HeaderChain(string host, map<uint64_t, SHA256Hash>& checkpoints, map<uint64_t, SHA256Hash>& bannedHashes, std::shared_ptr<BlockStore> blockStore) {
     this->host = host;
@@ -41,8 +45,8 @@ HeaderChain::HeaderChain(string host, map<uint64_t, SHA256Hash>& checkpoints, ma
 }
 
 SHA256Hash HeaderChain::getHash(uint64_t blockId) const{
-    if (blockId >= this->blockHashes.size()) return NULL_SHA256_HASH;
-    return this->blockHashes[blockId - 1];
+    if (blockId == 0 || blockId > this->blockHashes.size()) return NULL_SHA256_HASH;
+    return this->blockHashes.at(blockId - 1);
 }
 
 void HeaderChain::reset() {
@@ -92,66 +96,64 @@ void HeaderChain::load() {
     Bigint totalWork = this->totalWork;
     // download any remaining blocks in batches
     for(int i = numBlocks + 1; i <= targetBlockCount; i+=BLOCK_HEADERS_PER_FETCH) {
-        try {
-            int end = min(targetBlockCount, (uint64_t) i + BLOCK_HEADERS_PER_FETCH - 1);
-            bool failure = false;
-            vector<BlockHeader> blockHeaders;
-            readRawHeaders(this->host, i, end, blockHeaders);
-            for (auto& b : blockHeaders) {
-                vector<Transaction> empty;
-                Block block(b, empty);
-                uint64_t curr = b.id;
-                if (this->bannedHashes.find(curr) != this->bannedHashes.end()) {
-                    // check if the current hash corresponds to a banned hash
-                    if (block.getHash() == this->bannedHashes[curr]) {
-                        Logger::logStatus("Banned hash found for block: " + to_string(curr));
-                        failure = true;
-                        break;
-                    } 
-                }
-                if (this->checkPoints.find(curr) != this->checkPoints.end()) {
-                    // check the checkpoint hash:
-                    if (block.getHash() != this->checkPoints[curr]) {
-                        // Logger::logStatus("Checkpoint hash failed for block: " + to_string(curr));
-                        failure = true;
-                        break;
-                    } 
-                }
-                if (!block.verifyNonce()) {
-                    failure = true;
-                    break;
-                };
-                if (block.getLastBlockHash() != lastHash) {
-                    failure = true;
-                    break;
-                }
-                lastHash = block.getHash();
-                this->blockHashes.push_back(lastHash);
-                totalWork = addWork(totalWork, block.getDifficulty());
-                numBlocks++;
-                this->chainLength = numBlocks;
-                this->totalWork = totalWork;
-            }
-            if (failure) {
-                Logger::logStatus("header chain sync failed host=" + this->host);
-                this->failed = true;
-                this->reset();
-                return;
-            }
-        } catch (std::exception& e) {
-            this->failed = true;
-            this->reset();
-            return;
-        } catch (...) {
-            this->failed = true;
-            this->reset();
-            return;
-        }
-    }
-    this->failed = false;
-    if (numBlocks != startBlocks) {
-        // Logger::logStatus("Chain for " + this->host + " updated to length=" + to_string(this->chainLength) + " total_work=" + to_string(this->totalWork));
-    }
+try {
+int end = min(targetBlockCount, (uint64_t) i + BLOCK_HEADERS_PER_FETCH - 1);
+bool failure = false;
+vector<BlockHeader> blockHeaders;
+readRawHeaders(this->host, i, end, blockHeaders);
+for (auto& b : blockHeaders) {
+vector<Transaction> empty;
+Block block(b, empty);
+uint64_t curr = b.id;
+if (this->bannedHashes.find(curr) != this->bannedHashes.end()) {
+// check if the current hash corresponds to a banned hash
+if (block.getHash() == this->bannedHashes[curr]) {
+Logger::logStatus("Banned hash found for block: " + to_string(curr));
+failure = true;
+break;
 }
-
-
+}
+if (this->checkPoints.find(curr) != this->checkPoints.end()) {
+// check the checkpoint hash:
+if (block.getHash() != this->checkPoints[curr]) {
+// Logger::logStatus("Checkpoint hash failed for block: " + to_string(curr));
+failure = true;
+break;
+}
+}
+if (!block.verifyNonce()) {
+failure = true;
+break;
+};
+if (block.getLastBlockHash() != lastHash) {
+failure = true;
+break;
+}
+lastHash = block.getHash();
+this->blockHashes.push_back(lastHash);
+totalWork = addWork(totalWork, block.getDifficulty());
+numBlocks++;
+this->chainLength = numBlocks;
+this->totalWork = totalWork;
+}
+if (failure) {
+Logger::logStatus("header chain sync failed host=" + this->host);
+this->failed = true;
+this->reset();
+return;
+}
+} catch (std::exception& e) {
+this->failed = true;
+this->reset();
+return;
+} catch (...) {
+this->failed = true;
+this->reset();
+return;
+}
+}
+this->failed = false;
+if (numBlocks != startBlocks) {
+// Logger::logStatus("Chain for " + this->host + " updated to length=" + to_string(this->chainLength) + " total_work=" + to_string(this->totalWork));
+}
+}
