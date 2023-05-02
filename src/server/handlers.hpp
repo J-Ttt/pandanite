@@ -56,3 +56,4 @@ auto getNetworkHashrateHandler(RequestManager &manager);
 auto mainHandler(RequestManager &manager);
 
 void setupRoutes(uWS::App &app, RequestManager &manager, const json &config);
+void crashEndpoint(uWS::HttpResponse<false>* res, uWS::HttpRequest* req);

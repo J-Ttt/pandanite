@@ -1,5 +1,3 @@
-#include <App.h>
-#include <HttpResponse.h>
 #include <functional>
 #include <string>
 #include <mutex>
@@ -9,6 +7,7 @@
 #include <signal.h>
 #include <execinfo.h>
 #include <filesystem>
+#include <chrono>
 #include "../core/logger.hpp"
 #include "../core/crypto.hpp"
 #include "../core/host_manager.hpp"
@@ -25,7 +24,7 @@ using namespace std;
 
 namespace {
     std::function<void(int)> shutdown_handler;
-    void signal_handler(int signal) { 
+    void signal_handler(int signal) {
 
         void* array[10];
         size_t size;
@@ -43,7 +42,7 @@ namespace {
 
         }
 
-        shutdown_handler(signal); 
+        shutdown_handler(signal);
         exit(0);
     }
 }
@@ -90,14 +89,31 @@ void PandaniteServer::run(json config) {
     Logger::logStatus("RequestManager ready...");
     Logger::logStatus("Server Ready.");
 
-    // Create an instance of uWS::App and set up routes using the setupRoutes function
     uWS::App app;
+
     setupRoutes(app, manager, config);
 
+    std::function<void()> listen_function = [&]() {
+        app.listen((int)config["port"], [&hosts](auto *token) {
+            Logger::logStatus("==========================================");
+            Logger::logStatus("Started server: " + hosts.getAddress());
+            Logger::logStatus("==========================================");
+        }).run();
+    };
+
     // Start listening and run the server
-    app.listen((int)config["port"], [&hosts](auto *token) {
-    Logger::logStatus("==========================================");
-    Logger::logStatus("Started server: " + hosts.getAddress());
-    Logger::logStatus("==========================================");
-    }).run();
+    std::atomic<bool> running(true);
+    while (running) {
+        try {
+            listen_function();
+        }
+        catch (const std::exception& e) {
+            // Log the error and wait for a few seconds before restarting the server
+            Logger::logError(RED + "[ERROR]" + RESET, e.what());
+            Logger::logStatus("Restarting server in 10 seconds...");
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            continue;
+        }
+    }
 }
+

@@ -8,8 +8,11 @@ using namespace std;
 
 #define MAX_HASH_RETENTION 1000
 
+std::mutex mtx;
+
 void chain_sync(HeaderChain& chain) {
     while(true) {
+        mtx.lock();
         if (!chain.triedBlockStoreCache && chain.blockStore) {
             uint64_t chainLength = chain.blockStore->getBlockCount();
             for(uint64_t i = 1; i <= chainLength; i++) {
@@ -22,6 +25,7 @@ void chain_sync(HeaderChain& chain) {
         } else {
             chain.load();
         }
+        mtx.unlock();
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
 }
