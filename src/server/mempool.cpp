@@ -98,77 +98,49 @@ void MemPool::sync() {
     syncThread.push_back(std::thread(&MemPool::mempool_sync, this));
 }
 
-bool MemPool::hasTransaction(Transaction t) {
+ExecutionStatus MemPool::addTransaction(const Transaction& transaction) {
     std::unique_lock<std::mutex> lock(mempool_mutex);
-    return transactionQueue.count(t) > 0;
+    transactionQueue.insert(transaction);
+    return blockchain.verifyTransaction(transaction);
 }
 
-ExecutionStatus MemPool::addTransaction(Transaction t) {
+std::vector<Transaction> MemPool::getTransactions(size_t count) const {
     std::unique_lock<std::mutex> lock(mempool_mutex);
+    std::vector<Transaction> transactions;
+    transactions.reserve(count);
 
-    if (transactionQueue.count(t) > 0) {
-        return ALREADY_IN_QUEUE;
+    for (const auto& tx : transactionQueue) {
+        transactions.push_back(tx);
+        if (transactions.size() >= count) {
+            break;
+        }
     }
 
-    if (t.getFee() < MIN_FEE_TO_ENTER_MEMPOOL) {
-        return TRANSACTION_FEE_TOO_LOW;
-    }
-
-    ExecutionStatus status = blockchain.verifyTransaction(t);
-    if (status != SUCCESS) {
-        return status;
-    }
-
-    TransactionAmount outgoing = 0;
-    TransactionAmount totalTxAmount = t.getAmount() + t.getFee();
-
-    if (!t.isFee()) {
-        outgoing = mempoolOutgoing[t.fromWallet()];
-    }
-
-    if (!t.isFee() && outgoing + totalTxAmount > blockchain.getWalletValue(t.fromWallet())) {
-        return BALANCE_TOO_LOW;
-    }
-
-    if (transactionQueue.size() >= (MAX_TRANSACTIONS_PER_BLOCK - 1)) {
-        return QUEUE_FULL;
-    }
-
-    transactionQueue.insert(t);
-    mempoolOutgoing[t.fromWallet()] += totalTxAmount;
-    std::unique_lock<std::mutex> toSend_lock(toSend_mutex);
-    toSend.push_back(t);
-
-    return SUCCESS;
+    return transactions;
 }
 
-size_t MemPool::size() {
+bool MemPool::hasTransaction(const Transaction& transaction) const {
+    std::unique_lock<std::mutex> lock(mempool_mutex);
+    return transactionQueue.find(transaction) != transactionQueue.end();
+}
+
+size_t MemPool::size() const {
     std::unique_lock<std::mutex> lock(mempool_mutex);
     return transactionQueue.size();
 }
 
-std::vector<Transaction> MemPool::getTransactions() const{
+std::pair<std::vector<char>, size_t> MemPool::getRaw() const {
     std::unique_lock<std::mutex> lock(mempool_mutex);
-    std::vector<Transaction> transactions;
-    for (const auto& tx : transactionQueue) {
-        transactions.push_back(tx);
-    }
-    return transactions;
-}
+    size_t bufferSize = transactionQueue.size() * TRANSACTIONINFO_BUFFER_SIZE;
+    std::vector<char> buffer(bufferSize);
 
-std::pair<char*, size_t> MemPool::getRaw() const{
-    std::unique_lock<std::mutex> lock(mempool_mutex);
-    size_t len = transactionQueue.size() * TRANSACTIONINFO_BUFFER_SIZE;
-    char* buf = (char*) malloc(len);
-    int count = 0;
-    
+    size_t offset = 0;
     for (const auto& tx : transactionQueue) {
-        TransactionInfo t = tx.serialize();
-        transactionInfoToBuffer(t, buf + count);
-        count += TRANSACTIONINFO_BUFFER_SIZE;
+        memcpy(buffer.data() + offset, tx.getRaw().data(), TRANSACTIONINFO_BUFFER_SIZE);
+        offset += TRANSACTIONINFO_BUFFER_SIZE;
     }
 
-    return std::make_pair(buf, len);
+    return std::make_pair(buffer, bufferSize);
 }
 
 void MemPool::finishBlock(Block& block) {

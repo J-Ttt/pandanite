@@ -6,6 +6,7 @@
 #include <mutex>
 #include <list>
 #include <map>
+#include <memory>
 #include "../core/host_manager.hpp"
 #include "../core/transaction.hpp"
 #include "executor.hpp"
@@ -18,12 +19,12 @@ public:
     MemPool(HostManager& h, BlockChain& b);
     ~MemPool();
     void sync();
-    ExecutionStatus addTransaction(Transaction t);
+    ExecutionStatus addTransaction(const Transaction& transaction);
     void finishBlock(Block& block);
-    bool hasTransaction(Transaction t);
-    size_t size();
-    std::pair<char*, size_t> getRaw() const;
-    std::vector<Transaction> getTransactions() const;
+    bool hasTransaction(const Transaction& transaction) const;
+    size_t size() const;
+    std::pair<std::vector<char>, size_t> getRaw() const;
+    std::vector<Transaction> getTransactions(size_t count) const;
 
 protected:
     void mempool_sync();

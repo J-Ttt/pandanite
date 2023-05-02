@@ -29,7 +29,7 @@
 
 using namespace std;
 
-void chain_sync(BlockChain& blockchain) {
+void BlockChain::chain_sync() {
     std::mutex sync_mutex;
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10000));
@@ -185,7 +185,7 @@ BlockHeader BlockChain::getBlockHeader(uint32_t blockId) const{
 }
 
 void BlockChain::sync() {
-    this->syncThread.push_back(std::thread(chain_sync, ref(*this)));
+    this->syncThread.push_back(std::thread(&BlockChain::chain_sync, this));
 }
 
 const Ledger& BlockChain::getLedger() const{

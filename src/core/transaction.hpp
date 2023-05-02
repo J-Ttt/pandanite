@@ -5,6 +5,10 @@
 #include <optional>
 using namespace std;
 
+using json = nlohmann::json;
+
+const size_t TRANSACTION_INFO_SIZE = 64 /*signature*/ + 32 /*signingKey*/ + 8 /*timestamp*/ + 25 /*to*/ + 8 /*amount*/ + 8 /*fee*/ + 4 /*flag*/;
+
 struct TransactionInfo {
     char signature[64];
     char signingKey[32];
@@ -45,6 +49,7 @@ class Transaction {
         uint64_t getTimestamp() const;
         SHA256Hash getHash() const;
         SHA256Hash hashContents() const;
+        std::vector<char> getRaw() const;
         TransactionSignature getSignature() const;
         bool signatureValid() const;
         bool isFee() const;

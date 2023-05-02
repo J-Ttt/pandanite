@@ -109,6 +109,15 @@ Transaction::Transaction(PublicWalletAddress to, TransactionAmount fee) {
     this->fee = 0;
 }
 
+std::vector<char> Transaction::getRaw() const {
+    TransactionInfo t = serialize();
+    char buffer[TRANSACTION_INFO_SIZE];
+    transactionInfoToBuffer(t, buffer);
+
+    std::vector<char> rawData(buffer, buffer + TRANSACTION_INFO_SIZE);
+    return rawData;
+}
+
 Transaction::Transaction(json data) {
     PublicWalletAddress to;
     this->timestamp = stringToUint64(data["timestamp"]);

@@ -74,7 +74,8 @@ bool RequestManager::acceptRequest(std::string& ip) {
 
 json RequestManager::addTransaction(Transaction& t) {
     json result;
-    result["status"] = executionStatusAsString(this->mempool->addTransaction(t));
+    ExecutionStatus status = this->mempool->addTransaction(t); // Changed from void to ExecutionStatus
+    result["status"] = executionStatusAsString(status); // Pass the status variable instead
     return result;
 }
 
@@ -192,7 +193,7 @@ json RequestManager::getProofOfWork() {
 
 json RequestManager::getTransactionQueue() {
     json ret = json::array();
-    for(auto & tx : this->mempool->getTransactions()) {
+    for(auto & tx : this->mempool->getTransactions(10)) { // Assuming getTransactions() does not need any arguments
         ret.push_back(tx.toJson());
     }
     return ret;
@@ -207,9 +208,10 @@ BlockHeader RequestManager::getBlockHeader(uint32_t blockId) {
 }
 
 
-std::pair<char*, size_t> RequestManager::getRawTransactionData() {
+std::pair<std::vector<char>, size_t> RequestManager::getRawTransactionData() {
     return this->mempool->getRaw();
 }
+
 
 json RequestManager::getBlock(uint32_t blockId) {
     return this->blockchain->getBlock(blockId).toJson();

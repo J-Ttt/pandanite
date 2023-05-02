@@ -33,6 +33,7 @@ class BlockChain {
         SHA256Hash getLastHash() const;
         const Ledger& getLedger() const;
         Ledger& getLedger();
+        void chain_sync();
         uint32_t findBlockForTransaction(Transaction &t);
         uint32_t findBlockForTransactionId(SHA256Hash txid);
         ExecutionStatus addBlockSync(Block& block);

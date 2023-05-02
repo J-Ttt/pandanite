@@ -416,10 +416,9 @@ auto getTxHandler(RequestManager &manager) {
         sendCorsHeaders(res);
         try {
             res->writeHeader("Content-Type", "application/octet-stream");
-            std::pair<char*, size_t> buffer = manager.getRawTransactionData();
-            std::string_view str(buffer.first, buffer.second);
+            std::pair<std::vector<char>, size_t> buffer = manager.getRawTransactionData();
+            std::string_view str(buffer.first.data(), buffer.second);
             res->write(str);
-            delete buffer.first;
             res->end("");
         } catch(const std::exception &e) {
             Logger::logError("/gettx", e.what());
@@ -431,6 +430,7 @@ auto getTxHandler(RequestManager &manager) {
         });
     };
 }
+
 
 auto supplyHandler(RequestManager &manager) {
     return [&manager](auto *res, auto *req) {
@@ -834,7 +834,6 @@ auto mainHandler(RequestManager &manager) {
 
 void setupRoutes(uWS::App &app, RequestManager &manager, const json &config) {
     app.get("/", mainHandler(manager))
-        .get("/crash", crashEndpoint)
         .get("/name", nameHandler(manager, config))
         .get("/total_work", totalWorkHandler(manager))
         .get("/peers", peerHandler(manager))
