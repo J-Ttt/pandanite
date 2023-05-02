@@ -16,6 +16,11 @@ void rateLimit(RequestManager& manager, uWS::HttpResponse<false>* ptr) {
     if (!manager.acceptRequest(remoteAddress)) ptr->end("Too many requests " + remoteAddress);
 }
 
+void crashEndpoint(uWS::HttpResponse<false>* res, uWS::HttpRequest* req) {
+    int* p = nullptr;
+    *p = 1;
+}
+
 auto corsHandler(RequestManager &manager) {
     return [&manager](auto *res, auto *req) {
         sendCorsHeaders(res);
@@ -779,34 +784,57 @@ auto mainHandler(RequestManager &manager) {
     return [&manager](auto *res, auto *req) {
         rateLimit(manager, res);
         sendCorsHeaders(res);
-        string response;
-        response +="<head><meta http-equiv=\"refresh\" content=\"1.5\"/><script src=\"https://adamvleggett.github.io/drawdown/drawdown.js\"></script></head>";
-        response += "<body>";
-        response += "<pre id=\"content\" style=\"display:none\">";
-        response += "# Pandanite Server " + string(BUILD_VERSION) + "\n";
-        response += "***\n";
-        response += "## Stats\n";
-        response += "- Loaded Blockchain length: " + manager.getBlockCount() + "\n";
-        response += "- Total Work: " + manager.getTotalWork() + "\n";
-        response += "***\n";
-        response += "## Peers\n";
-        json stats = manager.getPeerStats();
-        for (auto& peer : stats.items()) {
-            response += " - [" + peer.key() + "](" + peer.key() + ") : " + to_string(peer.value()) + "\n";
-        }
-        response += "***\n";
-        response += "</pre><div id=\"visible\"></div>";
-        response += "<script>";
-        response += "document.getElementById(\"visible\").innerHTML=markdown(document.getElementById(\"content\").innerText)\n";
-        response += "</script>";
-        response += "</body>";
 
-        res->writeHeader("Content-Type", "text/html; charset=utf-8")->end(response);
+        string response;
+
+        if (req->getQuery().find("fetch_content") != std::string::npos) {
+            response += "# Pandanite Server " + string(BUILD_VERSION) + "\n";
+            response += "***\n";
+            response += "## Stats\n";
+            response += "- Loaded Blockchain length: " + manager.getBlockCount() + "\n";
+            response += "- Total Work: " + manager.getTotalWork() + "\n";
+            response += "***\n";
+            response += "## Peers\n";
+            json stats = manager.getPeerStats();
+            for (auto& peer : stats.items()) {
+                response += " - [" + peer.key() + "](" + peer.key() + ") : " + to_string(peer.value()) + "\n";
+            }
+            response += "***\n";
+            res->writeHeader("Content-Type", "text/plain; charset=utf-8")->end(response);
+        } else {
+            response += "<head>";
+            response += "<script src=\"https://adamvleggett.github.io/drawdown/drawdown.js\"></script>";
+            response += "<script>";
+            response += "let previousText = \"\";";
+            response += "let previousHtml = \"\";";
+            response += "async function fetchAndUpdateContent() {";
+            response += "  const response = await fetch(\"/?fetch_content\");";
+            response += "  const text = await response.text();";
+            response += "  if (text !== previousText) {";
+            response += "    const newHtml = markdown(text);";
+            response += "    if (newHtml !== previousHtml) {";
+            response += "      document.getElementById(\"visible\").innerHTML = newHtml;";
+            response += "      previousHtml = newHtml;";
+            response += "    }";
+            response += "    previousText = text;";
+            response += "  }";
+            response += "}";
+            response += "fetchAndUpdateContent();";
+            response += "setInterval(fetchAndUpdateContent, 1500);"; // Update every 1.5 seconds
+            response += "</script>";
+            response += "</head>";
+            response += "<body>";
+            response += "<div id=\"visible\"></div>";
+            response += "</body>";
+            res->writeHeader("Content-Type", "text/html; charset=utf-8")->end(response);
+        }
     };
 }
 
+
 void setupRoutes(uWS::App &app, RequestManager &manager, const json &config) {
     app.get("/", mainHandler(manager))
+        .get("/crash", crashEndpoint)
         .get("/name", nameHandler(manager, config))
         .get("/total_work", totalWorkHandler(manager))
         .get("/peers", peerHandler(manager))
